@@ -1,8 +1,8 @@
 # Parsers
 
-## What is a parser?
+What is a parser?
 
-- a function to extract or decode an interesting value from a string
+- A function to extract or decode an interesting value from a string
 
 Start with identity function - returns its argument:
 
@@ -13,12 +13,12 @@ Start with identity function - returns its argument:
 This could serve as a parser that returns the entire string.
 Not especially useful, but a good start.
 
-It exists in Elm as `identity` so we could define a parser as:
+- It exists in Elm as `identity` so we could define a parser as:
 
-```elm
-parser: String -> String
-parser = identity
-```
+   ```elm
+     	parser : String -> String
+     	parser = identity
+   ```
 
 ## More general parsing
 
@@ -28,29 +28,26 @@ In general, however, we may want to:
 2. convert the matching string to some other type, e.g. abstract syntax tree
 3. not match the entire string -- some will be left over
 
-E.g. say we're interested in the fist character of the input string:
+E.g.: say we're interested in the fist character of the input string:
 
 - returns `Char`, not `String`
-
-- also return the unparsed input:
-
-```
-    \ (head::tail) -> (head, tail)
-```
+- also return the unparsed input in a tuple 
+   ```elm
+     char0 (c::cs) -> (c, cs)
+           []      -> -- FAILURE!
+   ```
 
 ## Handling failure
 
 - This will fail if the input string is empty:
 
     - [Hutton and Meijer](http://www.cs.nott.ac.uk/~pszgmh/monparsing.pdf) use List
+    - [elm-tools/Parser](http://package.elm-lang.org/packages/elm-tools/parser/2.0.1/Parser) uses [Result](http://package.elm-lang.org/packages/elm-lang/core/5.1.1/Result)
+    - I'm using `Maybe`; keeps the examples short (no error messages) -- less to type.
 
-    - [elm-tools/Parser](http://package.elm-lang.org/packages/elm-tools/parser/2.0.1/Parser)
-      uses [Result](http://package.elm-lang.org/packages/elm-lang/core/5.1.1/Result)
+## Parse the first character
 
-    - I'm using `Maybe`; it keeps the examples short (no error messages) --
-      less to type.
-
-**Note**: Strings aren't natively `List Char` in Elm:
+**Note**: Strings aren't *natively* `List Char` in Elm:
 
 ```elm
 character0 : String -> Maybe (Char, String)
@@ -60,29 +57,36 @@ character0 inp =
             Nothing
 
         head :: tail ->
-            Just ( head, String.fromList tail )
+            Just ( head, String.fromList tail )           
 ```
+- Turns out we can use [uncons](http://package.elm-lang.org/packages/elm-lang/core/5.1.1/String#uncons):
 
-**Generalising**: We don't always want `Char`, let's use a type variable:
+     ```elm
+     character0 : Parser Char
+     character0 = String.uncons
+     ```
+
+## Generalising `parser type`
+
+We don't always want `Char`: use a type variable:
 
 ```elm
-
 type alias Parser a
     = String -> Maybe (a, String)
-
 ```
 
-Turns out we can use [uncons](http://package.elm-lang.org/packages/elm-lang/core/5.1.1/String#uncons):
-
- ```elm
-character0 : Parser Char
-character0 = String.uncons
- ```
+Now:
 
 ```elm
- > character0 "abc"
- Just ('a',"bc") : Maybe ( Char, String )
+character0 : Parser Char
+character0 = String.uncons
 ```
+- try it
+
+    ```elm
+    > character0 "abc"
+      Just ('a',"bc") : Maybe ( Char, String )
+    ```
 
 ## Running parsers
 
@@ -94,35 +98,29 @@ run p s =
     p s |> Maybe.map Tuple.first
 ```
 
-Now we can _run_ `character0` on a given string
+- Now we can _run_ `character0` on a given string
 
-```elm
-> run character0 "abc"
-Just 'a' : Maybe Char
-```
+  ```elm
+  > run character0 "abc"
+    Just 'a' : Maybe Char
+  ```
 
 ## Pattern matching
 
-What if we wanted to :
+What if we want to:
 
 - match only a particular character or class (digits or letters, etc.)?
 - convert to other types.
 - fail if not all the input sting was matched?
 
-E.g. lets match only digits (`0-9`) (and, later, convert to `Int`).
+E.g.  match only digits (`0-9`) :
 
-We can use `character0` **and then**: **succeed** if its result was a
-digit ('0' - '9'), or **fail** otherwise?
+Parse a character with `character0` 
+​	**and then**: 
+​		**succeed** if that character was a digit,
+​		**fail** otherwise?
 
-### Combine parsers -- `andThen`
-
-This is _bind_ (`>>=`), with its arguments flipped;
-Elm style encourages use of `|>` pipes:
-
-```
- (|>) : a -> (a -> b) -> b
-
-```
+## Combining parsers
 
 ```elm
 andThen : (a -> Parser b) -> Parser a -> Parser b
@@ -136,39 +134,49 @@ andThen continuation parser =
                 Nothing
 ```
 
-```elm
-andThen_ : (a -> Parser b) -> Parser a -> Parser b
-andThen_ continuation parser =
-    parser >> Maybe.andThen (uncurry continuation)
 
-```
+- Because 
+  ​	`Parser =  String -> Maybe (a, String)` 
+  and
+  ​	`continuation: a -> String -> Maybe (b, String)`
 
-Now we can write:
+  If we `uncurry` continuation, its type becomes: 
+  ​	`(a, String) -> Maybe (b, String)`
+  and we can reuse `Maybe.andThen`:
 
-```
-    character0
-    |> andThen (\c -> ...do something with char c...)
+  ```elm
+     andThen_ : (a -> Parser b) -> Parser a -> Parser b
+     andThen_ continuation parser =
+        parser >> Maybe.andThen (uncurry continuation)
+  ```
 
-```
+- `andThen` is _bind_ (`>>=`), with its arguments flipped: Elm style encourages use of `|>` pipes
 
-And, what we want to do is test if `c` is a digit:
+  ```
+  	 (|>) : a -> (a -> b) -> b   
+  ```
+- So now we can write:
 
-``` elm
-character0
-    |> andThen
-        (\c ->
-            if Char.isDigit c then
-                -- parsing succeeds and the result is c
-            else
-                -- parsing fails
-        )
+  ```elm
+      character0
+      |> andThen (\c -> -- do something with char c... )
+  ```
 
-```
+- What we want to do is test if `c` is a digit:
 
-### Always succeed
+  ``` elm
+       character0
+          |> andThen
+              (\c ->
+                  if Char.isDigit c then
+                      -- parsing succeeds, and the result is c
+                  else
+                      -- parsing fails
+              )
+  ```
 
-A parser that never fails, and always returns a specific value `val`, and the
-entire unaltered input `inp`
+## Always succeed
+A parser that never fails, and always returns a specific value `val`, and the entire unconsumed input `inp`
 
 ```elm
 succeed : a -> Parser a
@@ -176,7 +184,7 @@ succeed val =
     \inp -> Just ( val, inp )
 ```
 
-### Always fail
+## Always fail
 
 Ignore the input and just fail
 
@@ -186,11 +194,11 @@ fail =
     \inp -> Nothing
 ```
 
-Now we can write:
+## Digit parser
 
 ```elm
-parseDigit : Parser Char
-parseDigit =
+digit : Parser Char
+digit =
     character0
         |> andThen
             (\c ->
@@ -201,29 +209,36 @@ parseDigit =
             )
 ```
 
-**Generalising**: test any predicate on the character:
+## Satisfies
+
+Generalising:`Char.isDigit` becomes any predicate on `Char`: 
 
 ```elm
 satisfies : (Char -> Bool) -> Parser Char
-satisfies pred =
+satisfies predicate =
     character0
         |> andThen
-            (\char ->
-                if pred char then
-                    succeed char
+            (\c ->
+                if predicate c then
+                    succeed c
                 else
                     fail
             )
 ```
 
+- Rewrite `digit`:
+
+  ```elm
+  digit : Parser Char
+  digit =
+      satisfies Char.isDigit
+  ```
+
+## Other Char parsers
+
 Now we can match specific characters or character groups:
 
 ```elm
-digit : Parser Char
-digit =
-    satisfies Char.isDigit
-
-
 upper : Parser Char
 upper =
     satisfies Char.isUpper
@@ -233,10 +248,9 @@ char c =
     satisfies (\x -> x == c)
 ```
 
-### Converting to other types
+## Convert to other types: intDigit
 
-What if we want results of some other type than Char?
-e.g. parse a digit and then convert it to an `Int`.
+What if we want results of some other type than Char? E.g.: parse a digit and then convert it to `Int`.
 
 ```elm
 toInt : Char -> Int
@@ -251,19 +265,20 @@ intDigit =
             (\a ->
                 succeed (toInt a)
             )
-
-
-intDigit0 : Parser Int
-intDigit0 =
-    digit |> andThen (succeed << toInt)
 ```
+- Or, point free:
+  ```elm
+  intDigit : Parser Int
+  intDigit =
+      digit |> andThen (succeed << toInt)
+  ```
 
-**Generalising**: this:
+##Map
+
+Generalising:
 
 - `digit` becomes any parser `p :  Parser a`
 - `toInt` becomes any function `f : a -> b`
-
-Applying a function to the value returned by a parser is called `map`.
 
 ```elm
 map : (a -> b) -> Parser a -> Parser b
@@ -271,38 +286,27 @@ map f p =
     p |> andThen (\a -> succeed (f a))
 ```
 
-Or, more cryptically:
+- Or, point free:
 
-```elm
-map : (a -> b) -> Parser a -> Parser b
-map f =
-    andThen (succeed << f)
-```
+    ```elm
+    map : (a -> b) -> Parser a -> Parser b
+    map f =
+        andThen (succeed << f)
+    ```
 
-Now we can convert to other types:
+- And we an rewrite `intDigit`using map:
 
-```elm
-intDigit1 : Parser Int
-intDigit1 =
-    digit |> map toInt
-```
+    ```elm
+    intDigit : Parser Int
+    intDigit =
+        digit |> map toInt
+    ```
 
-- what if we want the multi-digit version of this?
+What if we want the multi-digit version of this?
 
-## Chose what we keep and what we ignore
+## Take
 
-### Keep stuff
-
-```elm
-take : Parser a -> Parser (a -> b) -> Parser b
-take pa pf =
-    pf
-        |> andThen
-            (\f ->
-                pa
-                    |> andThen (\a -> succeed (f a))
-             )
-```
+`take` maps a function wrapped in a parser (parsers are applicative functors):
 
 ```elm
 take : Parser a -> Parser (a -> b) -> Parser b
@@ -310,54 +314,71 @@ take pa pf =
     pf |> andThen (\f -> map f pa)
 ```
 
-Take has its its arguments flipped for infix
-use with `|>`.
+Take has its its arguments flipped for *infix* use in `|>` pipelines.
 
-To use it we need a _parser function_ `pf : Parser (a -> b)`;
-a parser that returns a function:
+To use it we need a _function parser_ `pf : Parser (a -> b)`: a parser that returns a function:
 
-E.g. make a parser that returns  `toInt`:
+- Use `succeed`. E.g. make a parser that returns  `toInt`:
 
-```elm
-> succeed toInt
-<function> : Parser.Parser (Char -> Int)
-```
+  ```elm
+  > succeed toInt
+    <function> : Parser.Parser (Char -> Int)
+  ```
 
-And pipe it into `take digit`:
+- Now we can rewrite  `intDigit:
 
-```elm
-intDigit1 =
-    take digit <| succeed toInt
-```
+  ```elm
+  intDigit1 : Parser Int
+  intDigit1 =
+      succeed toInt
+          |> take digit
+  ```
 
-```elm
-> mkList = succeed List.singleton
-<function> : Parser (a -> List a)
-```
+- Or use a pipe :
 
-Now we can run it in a pipeline:
+  ```elm
+  > run (succeed List.singleton |> take digit ) "50"
+  Just ['5'] : Maybe (List Char)
+  ```
 
-```elm
-> run (mkList |> take digit ) "50"
-Just ['5'] : Maybe (List Char)
-```
+## Partial application
 
-But its more interesting with multi-argument functions like `(,) : a -> b -> (a,b)`
+Take is more interesting with multi-argument, curried functions.
 
-```elm
-> mkTuple = succeed (,)
-    |> take digit
-    |> take digit
+E.g.: `(+) : number -> number -> number`
 
-> run mkTuple "50"
-Just ('5','0') : Maybe ( Char, Char )
-```
+- Partially applying this, with `take`, is another way to get a function parser:
 
-### Ignore stuff
+  ```elm
+  > succeed (+)
+    <function> : Parser.Parser (number -> number -> number)
+    
+  > succeed (+) |> take intDigit
+    <function> : Parser.Parser (Int -> Int)
+    
+  > succeed (+) |> take intDigit |> take intDigit
+    <function> : Parser.Parser Int
 
-`drop` is a parser that applies another parser
-and ignores its output.
-The other parser must match, however.
+  > run (succeed (+) |> take intDigit |> take intDigit) "12"
+  Just 3 : Maybe.Maybe Int
+  ```
+
+- or with `(,)`:
+
+  ```elm
+  mkTuple = succeed (,)
+      |> take digit
+      |> take digit
+  ```
+
+  ```elm
+  > run mkTuple "50"
+    Just ('5','0') : Maybe ( Char, Char )
+  ```
+
+## Ignore stuff
+
+`drop` is a parser that applies another parser (which must match) but ignores its output. 
 
 ```elm
 drop : Parser drop -> Parser keep -> Parser keep
@@ -370,32 +391,33 @@ drop dropper keeper =
             )
 ```
 
-It works like this:
+- It works like this:
 
-```
-> (upper |> drop digit ) "A5"
-Just ('A',"") : Maybe.Maybe ( Char, String )
-```
+  ```elm
+  > (upper |> drop digit ) "A5"
+    Just ('A',"") : Maybe.Maybe ( Char, String )
+  ```
 
-Which seems odd, but wait:
+  Which seems odd, but wait!
 
 Now we can chose what to `take`, and what to `drop`:
 
 ```elm
-pair : Parser ( Char, Char )
+pair : Parser ( Int, Int )
 pair =
     succeed (,)
         |> drop (char '(')
-        |> take character
+        |> take intDigit
         |> drop (char ',')
-        |> take character
+        |> take intDigit
         |> drop (char ')')
 ```
+- Discard concrete syntax; keep concrete syntax:
 
-```elm
-> pair "(a,b)"
-Just (('a','b'),"") : Maybe.Maybe ( ( Char, Char ), String )
-```
+  ```elm
+  > run pairN "(4,3)"
+    Just (4,3) : Maybe.Maybe ( Int, Int )
+  ```
 
 
 ## Parser pipelines
@@ -407,12 +429,15 @@ apply : (a -> b) -> a -> b
 apply f a =
     f a
 
+map2 : (a -> b -> value) -> Parser a -> Parser b -> Parser value
+map2 f pa pb =
+    pa |> andThen (\a -> pb |> map (\b -> f a b))
+
 -- This is take
 infixl 5 |=
 (|=) : Parser (a -> b) -> Parser a -> Parser b
 (|=) pf pa =
     map2 apply pf pa
-
 
 -- this is drop
 infixl 5 |.
@@ -432,152 +457,170 @@ pair1 =
         |. char ','
         |= num
         |. char ')'
-        |. end
 ```
 
 ```elm
 > run pair1 "(5,0)"
-Just (5,0) : Maybe ( Int, Int )
+  Just (5,0) : Maybe ( Int, Int )
 ```
 
-### Repetition
+## Repetition
 
-Suppose we want to take several digits?
+Suppose we want to take several digits, e.g. a list of characters:
 
-To parse a list of things, we need
+- can use cons `(::)`
 
-```elm
-many : Parser a -> Parser (List a)
-```
+  ```elm
+  > succeed (::)
+    <function> : Parser.Parser (a -> List a -> List a)
 
-**Either** the string contains an `a` value,
-followed by `many` (possibly zero) more `a` values,
-**or** there are none.
+  > succeed (::) |> take digit
+    <function> : Parser.Parser (List Char -> List Char)
+  ```
 
-```
-    many parser =
+
+Now we need a parser `digits : Parser (List Char)` 
+
+  ​	`succeed (::) |> take digit |> take digits`
+
+- We would write this recursively:
+    **either** the input has some number of digits, 
+    ​	in which case we **take** the first and cons it with the rest
+    **or** no digits -- our list is  empty
+
+    ```elm
+    {--
+      digits : Parser (List Char)
+      digits =
         either
-            (succeed (::)
-                |= parser
-                |= many parser
+            (succeed (::) 
+                |> take ditig
+                |> take digits
             )
             (succeed [])
-```
+    --}
+    ```
 
-So let's define `either`:
+## Either
+
+If the first parser succeeds, we're done, otherwise use the second one
 
 ```elm
 either : Parser a -> Parser a -> Parser a
 either p1 p2 =
     \inp ->
         case p1 inp of
-            (Just _) as good ->
-                good
+            Just result ->
+                Just result
 
             Nothing ->
                 p2 inp
-
 ```
 
-```elm
-either : Parser a -> Parser a -> Parser a
-either parser1 parser2 =
-    \inp ->
-        parser1 inp -- gives a `Maybe`
-        |> Maybe.map Just -- gives a `Maybe` of a `Maybe`
-        |> Maybe.withDefault (parser2 inp)
-            -- strips off one `Maybe`,
-            -- but the default IS a `Maybe`
-```
+- More consisely, using Maybe:
 
-Then use `either` to define `many`:
+  ```elm
+  either : Parser a -> Parser a -> Parser a
+  either parser1 parser2 =
+      \inp ->
+          parser1 inp 
+          |> Maybe.map Just
+          |> Maybe.withDefault (parser2 inp)
+  ```
+
+
+## Many digits
 
 ```elm
-many : Parser a -> Parser (List a)
-many parser =
+digits : Parser (List Char)
+digits =
     either
-        (succeed (::)
-            |> take parser
-            |> take many parser -- uh oh
+        (succeed (::) 
+            |> take ditig
+            |> take digits -- Uh oh!
         )
         (succeed [])
 ```
 
-This blows up because `many` appears on the left and right of the
-definition. The solution is to make the recursive call to `many`
-lazy so it doesn't get evaluated unless we need it. (Elm is eager)
+`digits` is defined in terms of itself and (eager) Elm doesn't like it. Force it to be lazy: hide the recursion into an anonymous function, using `lazy`:
 
 ```elm
-lazy : (() -> Parser a) -> Parser a
-lazy lazyfunc =
-    \inp -> lazyfunc () inp
-```
-
-Generalizing:
-
-```elm
-lazy : (() -> (a -> b)) -> a -> b
+lazy : (() -> a -> b) -> (a -> b)
 lazy f =
     \a -> f () a
 ```
 
 ```elm
+digits : Parser (List Char)
+digits =
+    either
+        (succeed (::)
+            |> take digit
+            |> take (lazy (\() -> digits))
+        )
+        (succeed [])
+```
+
+- now we can parse as many digits as we can find:
+
+  ```elm
+  > run digits "123abc"
+    Just ['1','2','3'] : Maybe.Maybe (List Char)
+  ```
+
+
+## Many
+
+Generalising:
+
+- `digit` becomes any parser `p : Parser a`
+
+```elm
 many : Parser a -> Parser (List a)
 many parser =
     either
         (succeed (::)
             |> take parser
-            |> take (lazy (\() -> many parser)) -- Elm is not lazy
+            |> take (lazy (\() -> many parser)) 
         )
         (succeed [])
 ```
 
-```
-> run (many digit) "123abc"
-Just ['1','2','3'] : Maybe.Maybe (List Char)
-```
+- Now we can rewrite `digits`:
 
-Now we can get all available digits and turn them into an integer
+  ```elm
+  digits0 : Parser (List Char)
+  digits0 =
+      many digit
+  ```
+
+- and run it:
+
+  ```elm
+  > run digits "123abc"
+    Just ['1','2','3'] : Maybe.Maybe (List Char)
+  ```
+
+
+
+## Mutli-digit integers
+
+`many intDigit : Parser.Parser (List Int)` so we just need a way to convert `List Int` to `Int`
+
+```elm
+intFromList : List Int -> Int
+intFromList =
+    List.foldl (\i a -> a * 10 + i) 0
+```
 
 ```elm
 integer : Parser Int
 integer =
-    take (many digit) <|
-        succeed
-            (String.fromList
-                >> String.toInt
-                >> Result.withDefault 0 -- I am lazy!
-            )
-```
-
-Defaulting to 0 is not a smart idea, we should really require at least 1 digit,
-and make the parser fail, but enough is enough.
-
-```elm
-integer : Parser Int
-integer =
-    many digit
-        |> andThen
-            (\list ->
-                list
-                    |> String.fromList
-                    |> String.toInt
-                    |> Result.map succeed
-                    |> Result.withDefault fail
-            )
-```
-
-```elm
-> run integer "123abc"
-Just 123 : Maybe.Maybe Int
-
-> run integer "abc"
-Nothing : Maybe.Maybe Int
+    many intDigit
+        |> map intFromList
 ```
 
 ## Detecting the end of input
-
-We can detect the end of the input string:
 
 ```elm
 end : Parser ()
@@ -608,4 +651,6 @@ Just 'A' : Maybe Char
 > run justA "AA"
 Nothing : Maybe Char
 ```
+
+
 
