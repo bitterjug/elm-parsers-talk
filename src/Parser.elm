@@ -12,28 +12,26 @@ char0 =
     String.uncons
 
 
-run : Parser a -> String -> Maybe a
-run p s =
+run : String -> Parser a -> Maybe a
+run s p =
     p s
         |> Maybe.map Tuple.first
 
 
-r : String -> Parser a -> Maybe a
-r =
-    flip run
 
-
-
--- parse first character
--- and then
--- if that character is a digit -- succed with the character
--- of not , fail with notning
+{- parse first character with char0
+   and then
+       if its a digit
+           succeed with that char
+       else
+           fail
+-}
 
 
 andThen : (a -> Parser b) -> Parser a -> Parser b
-andThen continuation pa =
+andThen continuation parser =
     \inp ->
-        case pa inp of
+        case parser inp of
             Just ( aVal, rest ) ->
                 continuation aVal rest
 
@@ -41,37 +39,55 @@ andThen continuation pa =
                 Nothing
 
 
-succeed : a -> Parser a
-succeed a =
-    \inp ->
-        Just ( a, inp )
-
-
-fail : Parser a
-fail =
-    \inp -> Nothing
-
-
-satisfies : (Char -> Bool) -> Parser Char
-satisfies predicate =
+digit : Parser Char
+digit =
     char0
         |> andThen
             (\c ->
-                if predicate c then
+                if Char.isDigit c then
                     succeed c
                 else
                     fail
             )
 
 
-digit : Parser Char
-digit =
+succeed : a -> Parser a
+succeed val =
+    \inp ->
+        Just ( val, inp )
+
+
+fail : Parser a
+fail =
+    \inp ->
+        Nothing
+
+
+satisfies : (Char -> Bool) -> Parser Char
+satisfies pred =
+    char0
+        |> andThen
+            (\c ->
+                if pred c then
+                    succeed c
+                else
+                    fail
+            )
+
+
+digit_ : Parser Char
+digit_ =
     satisfies Char.isDigit
 
 
 upper : Parser Char
 upper =
     satisfies Char.isUpper
+
+
+char : Char -> Parser Char
+char c =
+    satisfies (\x -> x == c)
 
 
 toInt : Char -> Int
@@ -87,18 +103,18 @@ intDigit =
 
 map : (a -> b) -> Parser a -> Parser b
 map f parser =
-    parser |> andThen (\c -> succeed (f c))
+    parser
+        |> andThen (succeed << f)
 
 
-map0 : (a -> b) -> Parser a -> Parser b
-map0 f =
-    andThen <| succeed << f
+intDigit_ : Parser Int
+intDigit_ =
+    digit |> map toInt
 
 
-intDigit0 : Parser Int
-intDigit0 =
-    digit
-        |> map toInt
+take : Parser a -> Parser (a -> b) -> Parser b
+take pa pf =
+    pf |> andThen (\f -> map f pa)
 
 
 intDigit1 : Parser Int
@@ -107,108 +123,20 @@ intDigit1 =
         |> take digit
 
 
-take : Parser a -> Parser (a -> b) -> Parser b
-take pa pf =
-    pf |> andThen (\f -> map f pa)
-
-
-apply : (a -> b) -> a -> b
-apply f a =
-    f a
-
-
-map2 : (a -> b -> value) -> Parser a -> Parser b -> Parser value
-map2 f parsera parserb =
-    parsera
-        |> andThen
-            (\a ->
-                parserb
-                    |> map (\b -> f a b)
-            )
-
-
-map2_ : (a -> b -> value) -> Parser a -> Parser b -> Parser value
-map2_ f pa pb =
-    pa |> andThen (\a -> pb |> andThen (\b -> succeed (f a b)))
-
-
-take2 : Parser a -> Parser (a -> b) -> Parser b
-take2 =
-    map2 <| flip apply
-
-
-drop : Parser drop -> Parser keep -> Parser keep
-drop dropper keeper =
-    keeper
-        |> andThen
-            (\value ->
-                dropper
-                    |> andThen (\_ -> succeed value)
-            )
-
-
-char : Char -> Parser Char
-char x =
-    satisfies (\c -> c == x)
-
-
-pair : Parser ( Char, Char )
-pair =
-    succeed (,)
-        |> drop (char '(')
-        |> take digit
-        |> drop (char ',')
-        |> take digit
-        |> drop (char ')')
-
-
-pairN : Parser ( Int, Int )
-pairN =
-    succeed (,)
-        |> drop (char '(')
-        |> take intDigit
-        |> drop (char ',')
-        |> take intDigit
-        |> drop (char ')')
-
-
-either : (b -> Maybe a) -> (b -> Maybe a) -> b -> Maybe a
-either pa pb =
+either : Parser a -> Parser a -> Parser a
+either p1 p2 =
     \inp ->
-        pa inp
-            |> Maybe.map Just
-            |> Maybe.withDefault (pb inp)
-
-
-either_ : (b -> Maybe a) -> (b -> Maybe a) -> b -> Maybe a
-either_ pa pb =
-    \inp ->
-        case pa inp of
-            Just res ->
-                Just res
+        case p1 inp of
+            Just result ->
+                Just result
 
             Nothing ->
-                pb inp
+                p2 inp
 
 
-lazy : (() -> Parser a) -> Parser a
+lazy : (() -> a -> b) -> (a -> b)
 lazy f =
-    \inp ->
-        f () inp
-
-
-
-{-
-   digits : Parser (List Int)
-   digits =
-       either
-           (succeed (::)
-               |> take intDigit
-               |> take digits
-           )
-           (succeed [])
-
--}
+    \a -> f () a
 
 
 digits : Parser (List Char)
@@ -216,38 +144,6 @@ digits =
     either
         (succeed (::)
             |> take digit
-            |> take (lazy (\_ -> digits))
+            |> take (lazy (\() -> digits))
         )
         (succeed [])
-
-
-many : Parser a -> Parser (List a)
-many p =
-    either
-        (succeed (::)
-            |> take p
-            |> take (lazy (\_ -> many p))
-        )
-        (succeed [])
-
-
-digits0 : Parser (List Char)
-digits0 =
-    many digit
-
-
-intFromList : List Int -> Int
-intFromList =
-    List.foldl (\i a -> a * 10 + i) 0
-
-
-integer : Parser Int
-integer =
-    many intDigit
-        |> map intFromList
-
-
-integer0 : Parser Int
-integer0 =
-    many intDigit
-        |> map (List.foldl (\i a -> a * 10 + i) 0)
