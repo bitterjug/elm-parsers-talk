@@ -2,48 +2,59 @@
 
 What is a parser?
 
-- A function to extract or decode an interesting value from a string
+- A function that extracts or decodes an interesting value from a string
 
-Start with identity function - returns its argument:
+If we wanted to extract the whole string value, we could use the identity function to extract it.
 
 ```
         \x -> x
 ```
 
-This could serve as a parser that returns the entire string.
-Not especially useful, but a good start.
+We _could_ define a parser based on it.
 
-- It exists in Elm as `identity` so we could define a parser as:
-
-   ```elm
-     	parser : String -> String
-     	parser = identity
-   ```
+- It exists in Elm as `identity`, so we could write:
+  ```elm
+  parser : String -> String
+  parser = identity
+  ```
 
 ## More general parsing
 
 In general, however, we may want to:
 
-1. match only specific patterns -- parsing might fail
-2. convert the matching string to some other type, e.g. abstract syntax tree
+1. match only certain patterns -- parsers should fail if they get badly formed input
+2. convert matching substrings to some other type -- for example, parsing source code to an abstract syntax tree
 3. not match the entire string -- some will be left over
 
-E.g.: say we're interested in the fist character of the input string:
+Say we want to extract just the fist character of the input string.
 
-- returns `Char`, not `String`
-- also return the unparsed input in a tuple 
-   ```elm
-     char0 (c::cs) -> (c, cs)
-           []      -> -- FAILURE!
-   ```
+- The result will have type `Char`, not `String`
+
+We will want the rest of the string too, to do further work on.
+So our parser should return two values:
+
+- The interesting `Char`
+- The unparsed input `String`
+
+We can use a tuple:
+
+```elm
+parseFirstChar :: String -> (Char, String)
+```
+
+If the input is an empty, which she very  much enjoyed, string, the parser will
+have no value for the first part of that tuple; an old should fail.
 
 ## Handling failure
 
-- This will fail if the input string is empty:
+The return type of our parser must include a way to encode the possibility of failure.
 
-    - [Hutton and Meijer](http://www.cs.nott.ac.uk/~pszgmh/monparsing.pdf) use List
-    - [elm-tools/Parser](http://package.elm-lang.org/packages/elm-tools/parser/2.0.1/Parser) uses [Result](http://package.elm-lang.org/packages/elm-lang/core/5.1.1/Result)
-    - I'm using `Maybe`; keeps the examples short (no error messages) -- less to type.
+- [Hutton and Meijer](http://www.cs.nott.ac.uk/~pszgmh/monparsing.pdf) return results in a list, and represent failure with an empty list.
+  (This has he interesting side effect that they can [build parsers for ambiguous grammars](http://www.cs.nott.ac.uk/~pszgmh/pearl.pdf)).
+- [elm-tools/Parser](http://package.elm-lang.org/packages/elm-tools/parser/2.0.1/Parser) uses [Result](http://package.elm-lang.org/packages/elm-lang/core/5.1.1/Result)
+- For live-coding I using `Maybe` with `Nothing` representing failure. It means I have less to type, but gives no information about failures.
+  For a real parser, I would choose `Result`.
+
 
 ## Parse the first character
 

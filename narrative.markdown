@@ -1,60 +1,72 @@
-# Parsers
+# Parsers in Elm
 
-What is a parser?
+I have  adapted this article from a talk I gave in 2018 where I live-coded
+a parser combinator library in Elm from first principles. Bear this in
+mind when you look at the code examples. I make choices to keep typing to
+a minimum. In a real parser library, things would look different.
+For example, I choose `Maybe a`  to encode the possibility of failure.
+But `Result error a` would enable the parser to return errors that explain why
+parsing has failed.
 
-- A function to extract or decode an interesting value from a string.
+## What is a parser?
 
+To kick things off, let's say a parser is a function to
+extract or decode an interesting value from a string.
 Here is the identity function; it returns its argument:
 
 ```
-        \x -> x
+\x -> x
 ```
 
 This might serve as a rudimentary parser if were interested in the entire
 string.  It exists in Elm as `identity`, so we could define a parser as:
 
 ```elm
-     parser : String -> String
-     parser = identity
+parser : String -> String
+parser = identity
 ```
 
 In general, however, we will want to build parsers that:
 
-1. match only specific patterns in the input string -- parsing might fail
-1. convert the matching portion of the string to some other,
-   more interesting type --
-   e.g., building an abstract syntax tree from its concrete syntax.
-1. consume and process only a portion of the input string  --
-   any unconsumed input should remain available to process later
+1. match only specific patterns in the input string
+   (i.e. parsing may fail if those patterns don't match)
+2. convert the matching part of the string to some other, more interesting type
+   (e.g., building an abstract syntax tree from its concrete syntax)
+3. consume only a portion of the input string
+   (any unconsumed input should remain available to process later)
 
 ## Parse the first character
 
-Say we want to _parse_ the first character of the input string.
-Our parser should:
+Say we want the first character of the input string.
+Our parser should return `Char` (not `String`).
+But we also want the unparsed part of the input, for further parsing.
+Our parser should return that too, e.g. in a tuple wit the
+result first and the unparsed string : `('H', "ello")`.
+(You might prefer a record
 
-- return `Char`, not `String`,
-- also return the unconsumed input, e.g.: in a tuple.
+If we convert the input string to list of characters,
+we can use pattern matching to extract the head and build the result tuple:
 
-If the input were a list of characters constructed with [`(::)`][cons],
-we might write something like:
+[cons]: http://package.elm-lang.org/packages/elm-lang/core/5.1.1/List#::	"cons"
 
-[cons]: http://package.elm-lang.org/packages/elm-lang/core/5.1.1/List#::
-
-```
+```elm
 char0 : String -> (Char, String)
 char0 input ->
- case input of
-    (c::cs) -> (c, cs)
+ case String.toList input of
+    (c::cs) -> (c, String.fromList cs)
     []      -> -- FAILURE!
 ```
 
-The list might be empty, in which case no firs character can be returned.
-Our parser needs a way to indicate that parsing has failed.
+When we give this parser an empty string, the second pattern matches.
+Parsing has failed!
 
 ## Handling failure
 
-- [Hutton and Meijer][hutton] use a list List
-- [elm-tools/Parser][parser] returns [Result][result]
+The parser needs a way to report that it has no result to return, because parsing failed.
+Returning a tuple of the result and the unparsed string will not suffice.
+
+- [elm-tools/Parser][parser] uses a [Result][result], so it can return helpful messages about the failure
+- [Hutton and Meijer][hutton] wrap results in a list, and use an empty list to represent failure
 
 [hutton]: http://www.cs.nott.ac.uk/~pszgmh/monparsing.pdf
 [parser]: http://package.elm-lang.org/packages/elm-tools/parser/2.0.1/Parser
@@ -293,7 +305,8 @@ char c =
 
 ## Convert to other types: intDigit
 
-What if we want results of some other type than Char? E.g.: parse a digit and then convert it to `Int`.
+What if we want results of some other type than Char?
+E.g.: parse a digit and then convert it to `Int`.
 
 ```elm
 toInt : Char -> Int
